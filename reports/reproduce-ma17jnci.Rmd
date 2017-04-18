@@ -244,6 +244,7 @@ print(sessionInfo(), locale = FALSE)
 
 &copy; 2017 John Lövrot.  
 This work is licensed under a [Creative Commons Attribution 4.0 International License](http://creativecommons.org/licenses/by/4.0/).  
+The source code is available at [github.com/lovrot/reproduce-ma17jnci](http://github.com/lovrot/reproduce-ma17jnci).  
 Version `r format(read.dcf("../description.dcf")[1, "version"])`
 
 - - -
