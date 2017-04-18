@@ -1,0 +1,8 @@
+title: R/Bioconductor code to reproduce the hypothesis-generating data analyses in Ma17JNCI
+description: The aim of this R code bundle is to reproduce the
+    hypothesis-generating data analyses in the original research article by
+    Ma, Karthik, Lövrot, et al. J Natl Cancer Inst. 2017.
+version: 0.0.9004
+author: John Lövrot
+license: CC BY 4.0
+url: http://github.com/lovrot/reproduce-ma17jnci

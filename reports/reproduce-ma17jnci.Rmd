@@ -1,0 +1,251 @@
+---
+title: "Reproduction of hypothesis-generating data analyses in Ma17JNCI"
+author: "John Lövrot"
+date: "`r format(Sys.Date(), format = '%B %d, %Y')`"
+output: 
+  html_document:
+    theme: cosmo
+    toc: true
+    toc_float: true
+    fig_width: 8
+    fig_height: 4
+link-citations: yes
+bibliography: bibliography.bib
+csl: journal-of-the-national-cancer-institute.csl
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(fig.path = "graphics/reproduce-ma17jnci-", 
+    echo = FALSE, warning = FALSE, message = FALSE)
+```
+
+```{r load_project}
+setwd("..")
+ProjectTemplate::reload.project()
+setwd("reports")
+
+select <- dplyr::select  # mask AnnotationDbi::select
+```
+
+```{r}
+ggplot2::theme_set(theme_classic() +
+    theme(axis.line.x = element_blank()) +
+    theme(axis.line.y = element_blank()))
+```
+
+# Aim
+
+The aim of this report is to reproduce the hypothesis-generating data analyses in the original research article by Ma, Karthik, Lövrot, et al. [@Ma2017]
+
+# Background
+
+To be added.
+
+Breast cancer stem-like cells (BSC).
+
+# Data aquisition
+
+>  To further explore ER&beta; function in BSCs, we performed whole-transcriptome analysis of mammospheres (MCF7S) incubated with vehicle control, or 10nM DPN.
+
+All the procedures and Affymetrix CEL files are available through the Gene Expression Omnibus (GEO) Database under accession number [GSE56139](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE56139). 
+
+# Data munging
+
+## Microarray data preprocessing
+
+Affymetrix microarray CEL files for GSE56139 was retrieved using the [GEOquery](https://bioconductor.org/packages/GEOquery/) package [@Davis2007]. 
+Probe intensities were extracted from CEL files and background corrected, normalized and summarized to probeset expression using the `rma` function from the [oligo](https://bioconductor.org/packages/oligo/) package [@Carvalho2010] with the default settings. 
+Probesets were mapped to Entrez Gene IDs using the [hta20transcriptcluster.db](http://bioconductor.org/packages/hta20transcriptcluster.db/) package.
+
+Asssembled R/Bioconductor ExpressionSet object:
+
+```{r}
+print(erbeta)
+```
+
+```{r}
+pData(erbeta) %>%
+  select(geo_accession, arraycd, cellcd, armcd, arm, replicate) %>%
+  knitr::kable(row.names = FALSE, caption = "Table. Characteristics of the full gene-expression dataset [GSE56139](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE56139).")
+```
+
+# Data analysis
+
+## Initial data explorations
+
+Initial explorations of the transcriptomic data for mammospheres (MCF7S) incubated with vehicle control and 10nM DPN.
+
+```{r}
+erbeta2 <- erbeta[, erbeta$cellcd == "MCF7S" & erbeta$armcd %in% c("C", "D")]
+```
+
+```{r, fig.cap = "Figure. t-distributed stochastic neighbour embedding (t-SNE) plot."}
+set.seed(2100)
+tsne_erbeta <- Rtsne(t(exprs(erbeta2)), theta = 0, perplexity = 2)
+## theta = 0: exact t-SNE
+## perplexity: "This value effectively controls how many nearest neighbours are taken into account when constructing the embedding in the low-dimensional space"
+
+erbeta2$tsne1 <- tsne_erbeta$Y[, 1]
+erbeta2$tsne2 <- tsne_erbeta$Y[, 2]
+
+gg <- ggplot(data = pData(erbeta2), 
+  aes(x = tsne1, y = tsne2, label = condnam, col = arm)) +
+  geom_text() +
+  coord_equal() +
+  scale_colour_manual(values = c("Control" = "darkgrey", "DPN" = "darkred")) + 
+  labs(x = "t-SNE 1", y = "t-SNE 2", col = "Arm")
+plot(gg)
+```
+
+```{r, fig.cap = "Figure. Conventional principal component analysis (PCA) plot after mean centering the variables/genes."}
+eset <- erbeta2
+exprs(eset) <- sweep(exprs(eset), 1, apply(exprs(eset), 1, "mean"))
+
+pca_erbeta <- prcomp(t(exprs(eset)))
+
+x <- predict(pca_erbeta)
+
+erbeta2$pc1 <- x[, "PC1"]
+erbeta2$pc2 <- x[, "PC2"]
+
+gg <- ggplot(data = pData(erbeta2), 
+  aes(x = pc1, y = pc2, label = condnam, col = arm)) +
+  geom_text() +
+  coord_equal() +
+  scale_colour_manual(values = c("Control" = "darkgrey", "DPN" = "darkred")) + 
+  labs(x = "PC 1", y = "PC 2", col = "Arm")
+plot(gg)
+```
+
+```{r, fig.height = 10, fig.cap = "Figure. Exploratory cluster heatmap. Unsupervised clustering of the samples based on the top 500 most varying genes. Average-linkage hierarchical clustering using the Euclidean distance metric, after gene-centering using the average of controls. Yellow: higher than average gene-expression in controls; black: average in controls; blue: lower than average in controls"}
+n <- 500
+eset <- erbeta
+eset <- genefilter::featureFilter(eset)
+eset <- eset[, eset$cellcd == "MCF7S" & eset$armcd %in% c("C", "D")]
+eset <- genefilter::nsFilter(eset, var.cutoff = 1 - n/nrow(eset))$eset
+
+sampleNames(eset) <- eset$condnam
+
+## Gene-center data using average of controls (as example)
+exprs(eset) <- sweep(exprs(eset), 1, apply(exprs(eset)[, eset$armcd == "C"], 1, "mean"))
+
+par(bty = "n")
+fig <- annHeatmap2(
+  exprs(eset),
+  dendrogram = list(
+    Col = list(clustfun = hclust_avl, distfun = dist, status = "yes", lwd = 1), 
+    Row = list(clustfun = hclust_avl, distfun = dist, status = "hide")), 
+  annotation = list(
+    Col = list(data = pData(eset)[, c("cellcd", "arm")], inclRef = TRUE)),
+  labels = list(
+    Row = list(labels = NULL)),
+  breaks = atanbreaks(eset, trg = 1),
+  col = cyanblackyellow,
+  legend = TRUE, 
+  scale = "none")
+plot(fig, widths = c(0.75, 3), heights = c(1.5, 6, 1))
+```
+
+Since expression values are log2 transformed intensity values, a difference in expression by one unit corresponds to a two-fold mean change in probe intensities.
+
+## Differential expression analysis
+
+Expression data was collapsed to gene level using a non-specific filter keeping only the probesets with highest interquartile range in the case of multiple mappings to the same Entrez Gene ID. 
+
+```{r, echo = TRUE}
+eset <- genefilter::featureFilter(erbeta)
+```
+
+DPN induced changes in gene expression were assessed with moderated t-tests using the [limma](https://bioconductor.org/packages/limma/) package [@Ritchie2015]. 
+Multiple testing was controlled by calculating the expected false discovery rate (FDR) according to Benjamini & Hochberg. 
+
+```{r, echo = TRUE}
+eset <- eset[, eset$cellcd == "MCF7S" & eset$armcd %in% c("C", "D")]
+eset$armcd <- eset$armcd[drop = TRUE]
+
+design <- model.matrix(~ armcd, data = pData(eset))
+fit <- lmFit(eset, design)
+fit <- contrasts.fit(fit, coefficients = "armcdD")
+fit <- eBayes(fit)
+tab <- topTable(fit, number = nrow(eset), adjust.method = "BH")
+```
+
+>  Transcriptome changes after DPN treatment in MCF7S revealed a distinct gene expression pattern: 75 transcripts were differentially regulated upon DPN treatment compared to the control group (moderated t-tests, nominal P < 0.0005, FDR ≈ 0.15).
+
+```{r, echo = TRUE}
+nrow(filter(tab, P.Value < 0.0005))
+max(filter(tab, P.Value < 0.0005)$adj.P.Val)  # FDR
+```
+
+```{r}
+tab %>%
+  select(symbol, entrezid, logFC, AveExpr, t, P.Value, adj.P.Val) %>%
+  head(n = 5) %>%
+  knitr::kable(row.names = FALSE, caption = "Table. Top 5 differentially abundant transcripts.")
+```
+
+## Gene set enrichment analysis
+
+>  To assess the biological relevance of the distinct gene expression pattern, we performed gene set enrichment analyses (GSEA) of the canonical pathways gene-set collection in the Molecular Signatures Database (Broad Institute). Seven gene sets were significantly enriched in DPN-treated mammospheres as compared to control (FDR < 0.10, Supplementary Table 3) with the majority related to glycolytic metabolism and with REACTOME_GLYCOLYSIS as top pathway (FDR < 0.001, Figure 4A).
+
+Enrichment analyses of canonical pathways gene-set collections in the [Molecular Signatures Database](http://software.broadinstitute.org/gsea/msigdb/) (Broad Institute) were performed using the [GSEA Software](http://software.broadinstitute.org/gsea/) (Broad Institute) [@Subramanian2005] with genes pre-ranked according to the moderated t-test statistics. 
+
+```{r}
+output_name <- "BSC_mod_ttest_DvC_c2_cp"
+output_dir <- "gsea"
+
+res_dirs <- grep(paste0(output_name, ".GseaPreranked"), list.files(output_dir), value = TRUE)
+res_dir <- sort(res_dirs, decreasing = TRUE)[1]  # sort by timestamp and pick most recent
+
+res_id <- strsplit(res_dir, ".", fixed = TRUE)[[1]][3]
+
+res <- rbind(
+  read.delim(
+    file.path(output_dir, res_dir, paste0("gsea_report_for_na_pos_", res_id, ".xls")),
+    as.is = TRUE, check.names = TRUE), 
+  read.delim(
+    file.path(output_dir, res_dir, paste0("gsea_report_for_na_neg_", res_id, ".xls")),
+    as.is = TRUE, check.names = TRUE))
+```
+
+```{r}
+res %>%
+  filter(FDR.q.val < 0.05 & NES > 0) %>%
+  arrange(desc(NES)) %>%
+  select(NAME, SIZE, ES, NES, NOM.p.val, FDR.q.val) %>%
+  mutate(NAME = substr(NAME, 1, 50)) %>%
+  knitr::kable(
+    digits = 3,
+    caption = "Table. Canonical pathways gene-sets significantly enriched in DPN-treated mammospheres as compared to control (FDR < 0.05).")
+```
+
+N.B. There are slight differences in GSEA results between the original analysis and this reproduction. 
+The original analysis was performed using R version 3.2.3, in particular the hta20sttranscriptcluster.db annotation package (version 8.3.1) was used. 
+Here, we've instead used the hta20transcriptcluster.db annotation package -- no "st" in the package name -- as of R version 3.3 and higher, see https://support.bioconductor.org/p/91448/.
+
+```{r}
+file_fig <- list.files(path = file.path("gsea", res_dir),
+  pattern = "enplot_REACTOME_GLYCOLYSIS")
+succeded <- file.copy(
+  from = file.path("gsea", res_dir, file_fig),
+  to = file.path("graphics", "enplot_REACTOME_GLYCOLYSIS.png"), 
+  overwrite = TRUE)
+```
+
+![Figure. Enrichment plot for the REACTOME_GLYCOLYSIS gene-set.](graphics/enplot_REACTOME_GLYCOLYSIS.png)
+
+# R session information
+
+```{r}
+print(sessionInfo(), locale = FALSE)
+```
+
+- - -
+
+&copy; 2017 John Lövrot.  
+This work is licensed under a [Creative Commons Attribution 4.0 International License](http://creativecommons.org/licenses/by/4.0/).  
+Version `r format(read.dcf("../description.dcf")[1, "version"])`
+
+- - -
+
+# References

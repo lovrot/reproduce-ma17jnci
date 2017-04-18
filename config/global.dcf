@@ -1,0 +1,13 @@
+version: 0.7
+data_loading: FALSE
+cache_loading: TRUE
+recursive_loading: FALSE
+munging: FALSE
+logging: FALSE
+load_libraries: TRUE
+libraries: tidyverse, 
+  Biobase, GEOquery, oligo, pd.hta.2.0, hta20transcriptcluster.db,
+  Rtsne, Heatplus, limma
+as_factors: FALSE
+data_tables: FALSE
+attach_internal_libraries: FALSE
