@@ -73,7 +73,7 @@ pData(erbeta) %>%
 
 ## Initial data explorations
 
-Initial explorations of the transcriptomic data for mammospheres (MCF7S) incubated with vehicle control and 10nM DPN.
+Initial explorations of the transcriptomic data for mammospheres (MCF7S) incubated with vehicle control or 10nM DPN.
 
 ```{r}
 erbeta2 <- erbeta[, erbeta$cellcd == "MCF7S" & erbeta$armcd %in% c("C", "D")]
